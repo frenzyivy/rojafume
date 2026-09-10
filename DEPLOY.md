@@ -5,27 +5,24 @@ one ends with a check, so you know it worked before moving on.
 
 ## What you need to hand
 
-| | Value | Where it goes |
-| --- | --- | --- |
-| Domain | `rojafume.com` — already set throughout this repo | DNS, nginx config, the page's `og:` tags |
-| **Your VPS IP** | you still need this | DNS `A` records, GitHub secret `VPS_HOST` |
-| SSH access to the VPS | `root@<your VPS IP>` | steps 3 and 4 |
-| An email address | `rojaperfumes0405@gmail.com` | Let's Encrypt expiry warnings |
+Everything is known now except your SSH login.
 
-**Finding your VPS IP.** It is on the server's page in your provider's dashboard
-(Hostinger, DigitalOcean, Contabo, …), labelled *IP address* or *IPv4*. Or, from
-the server itself:
+| | Value |
+| --- | --- |
+| Domain | `rojafume.com` |
+| VPS | `187.127.171.219` — Hostinger, Ubuntu 24.04, reverse DNS `srv1693456.hstgr.cloud` |
+| SSH | `root@187.127.171.219` (or your sudo user) |
+| Let's Encrypt contact | `rojaperfumes0405@gmail.com` |
+
+Checked from here on 10 Sep 2026: SSH answers on port 22 (OpenSSH 9.6p1,
+Ubuntu 24.04), and ports 80 and 443 accept connections but **no web server
+replies on either** — which is the expected state of a box that has not been set
+up yet. Nothing there to conflict with. If you think something *is* already
+serving web traffic on it, check before running the setup script:
 
 ```bash
-curl -s ifconfig.me
+sudo ss -tlnp | grep -E ':80|:443'
 ```
-
-Four numbers, e.g. `147.79.104.22`. It is **not** `23.227.38.32` — that address
-belongs to Shopify, and is what the domain points at today.
-
-The domain is already `rojafume.com` everywhere in this repo — the nginx config,
-the scripts' `DOMAIN` default, and the four absolute URLs in `public/index.html`
-that drive WhatsApp and Facebook link previews. Nothing to change.
 
 ---
 
@@ -51,9 +48,9 @@ Shopify store. Detaching it **does not affect `rojaperfume.in`**.
 
 | | Type | Name | Data | Action |
 | --- | --- | --- | --- | --- |
-| 1 | `A` | `@` | `23.227.38.32` → **your VPS IP** | **edit** |
+| 1 | `A` | `@` | `23.227.38.32` → **`187.127.171.219`** | **edit** |
 | 2 | `CNAME` | `www` | `shops.myshopify.com.` | **delete** |
-| 3 | `A` | `www` | **your VPS IP** | **add** |
+| 3 | `A` | `www` | **`187.127.171.219`** | **add** |
 
 Rows 2 and 3 are one change in two moves. **DNS does not allow a `CNAME` and an
 `A` record on the same name**, so the `CNAME` for `www` has to go before the `A`
@@ -102,7 +99,7 @@ dig +short rojafume.com
 dig +short www.rojafume.com
 ```
 
-Both must print your VPS IP and nothing else. While the old records are still
+Both must print `187.127.171.219` and nothing else. While the old records are still
 cached you may see `23.227.38.32` — that is the Shopify address, so wait for the
 TTL to expire rather than assuming the edit failed. On Windows use
 `nslookup rojafume.com 8.8.8.8` (asking Google's resolver sidesteps your own
@@ -142,7 +139,7 @@ git push
 SSH in, clone the repo, run the bootstrap script:
 
 ```bash
-ssh root@203.0.113.10
+ssh root@187.127.171.219
 
 apt-get update && apt-get install -y git
 git clone https://github.com/frenzyivy/rojafume.git /opt/rojafume
@@ -203,7 +200,7 @@ On the **Secrets** tab, **New repository secret**, four times:
 
 | Secret | Value |
 | --- | --- |
-| `VPS_HOST` | `203.0.113.10` |
+| `VPS_HOST` | `187.127.171.219` |
 | `VPS_USER` | `root` (or your deploy user) |
 | `VPS_SSH_KEY` | the private key printed above, in full |
 | `VPS_PATH` | `/var/www/rojafume` |
