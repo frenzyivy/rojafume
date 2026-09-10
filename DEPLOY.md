@@ -5,58 +5,89 @@ one ends with a check, so you know it worked before moving on.
 
 ## What you need to hand
 
-| | Example | Where it goes |
+| | Value | Where it goes |
 | --- | --- | --- |
-| Your domain | `rojafume.com` | DNS, nginx config, the page's `og:` tags |
-| Your VPS IP | `203.0.113.10` | DNS A records, GitHub secret `VPS_HOST` |
-| SSH access to the VPS | `root@203.0.113.10` | steps 3 and 4 |
+| Domain | `rojafume.com` — already set throughout this repo | DNS, nginx config, the page's `og:` tags |
+| **Your VPS IP** | you still need this | DNS `A` records, GitHub secret `VPS_HOST` |
+| SSH access to the VPS | `root@<your VPS IP>` | steps 3 and 4 |
 | An email address | `rojaperfumes0405@gmail.com` | Let's Encrypt expiry warnings |
 
-**This guide uses `rojafume.com` throughout.** If your domain is different, you
-need to change it in one place — the scripts take a `DOMAIN` variable and
-rewrite the nginx config themselves, but `public/index.html` has four absolute
-URLs near the top:
+**Finding your VPS IP.** It is on the server's page in your provider's dashboard
+(Hostinger, DigitalOcean, Contabo, …), labelled *IP address* or *IPv4*. Or, from
+the server itself:
 
 ```bash
-# from the repo root, on your machine
-sed -i 's/rojafume\.com/yourdomain.com/g' public/index.html
+curl -s ifconfig.me
 ```
 
-Those four are the canonical link and the `og:` tags. They only affect how the
-link looks when someone shares it on WhatsApp or Facebook — the page itself
-works either way, so this is not urgent, but a wrong domain there means no
-preview image.
+Four numbers, e.g. `147.79.104.22`. It is **not** `23.227.38.32` — that address
+belongs to Shopify, and is what the domain points at today.
+
+The domain is already `rojafume.com` everywhere in this repo — the nginx config,
+the scripts' `DOMAIN` default, and the four absolute URLs in `public/index.html`
+that drive WhatsApp and Facebook link previews. Nothing to change.
 
 ---
 
 ## Step 1 — Point the domain at the VPS
 
-In your registrar's DNS panel (GoDaddy, Namecheap, Hostinger, BigRock,
-Cloudflare — the panel differs, the records do not), delete any existing `A`,
-`AAAA` or `CNAME` record for `@` and `www`, then add:
+DNS for `rojafume.com` is at GoDaddy (`ns25`/`ns26.domaincontrol.com`). Edit it
+in whichever panel you already use.
 
-| Type | Name / Host | Value | TTL |
-| --- | --- | --- | --- |
-| `A` | `@` | `203.0.113.10` (your VPS IP) | 300 (or Automatic) |
-| `A` | `www` | `203.0.113.10` (the same IP) | 300 (or Automatic) |
+### What is there now
 
-The things that actually catch people out:
+The domain is currently attached to Shopify. Checked 10 Sep 2026:
 
-- **`@` means the bare domain.** Some panels want it written as `@`, some want
-  the domain itself, some want the field left blank. All three mean the same
-  thing.
-- **Delete the registrar's parking records first.** A leftover `A` record
-  pointing at their "this domain is registered" page will win some of the time,
-  which shows up as the site mysteriously working only sometimes.
-- **Use a low TTL while setting up.** 300 seconds means a mistake costs five
-  minutes instead of a day. Raise it once you are happy.
-- **Do not add an `AAAA` record** unless your VPS really has an IPv6 address. A
-  wrong `AAAA` breaks the site only for IPv6 visitors — one of the most annoying
-  things to debug, because it works fine for you.
-- **`www` as an `A` record, not a `CNAME`.** A `CNAME` to the apex works too,
-  but a second `A` record to the same IP is simpler and cannot break later.
+```
+rojafume.com       -> 23.227.38.32        Shopify (SHOPIFY-NET), serves the storefront
+www.rojafume.com   -> shops.myshopify.com 301 -> https://rojaperfume.in/
+```
 
-### If you use Cloudflare
+`23.227.38.32` is **Shopify's** shared IP, not a server of yours. Your live
+store is `rojaperfume.in`; `rojafume.com` is a second domain pointed at the same
+Shopify store. Detaching it **does not affect `rojaperfume.in`**.
+
+### Change exactly two records
+
+| | Type | Name | Data | Action |
+| --- | --- | --- | --- | --- |
+| 1 | `A` | `@` | `23.227.38.32` → **your VPS IP** | **edit** |
+| 2 | `CNAME` | `www` | `shops.myshopify.com.` | **delete** |
+| 3 | `A` | `www` | **your VPS IP** | **add** |
+
+Rows 2 and 3 are one change in two moves. **DNS does not allow a `CNAME` and an
+`A` record on the same name**, so the `CNAME` for `www` has to go before the `A`
+record for `www` can be added. Doing it the other way round makes the panel throw
+an error that looks like a bug.
+
+### Leave these alone
+
+| Type | Name | Why |
+| --- | --- | --- |
+| `NS` ×2 | `@` | GoDaddy's nameservers. Changing these takes DNS away from this panel entirely. |
+| `SOA` | `@` | Managed by the nameservers, not editable in any useful way. |
+| `CNAME` | `_domainconnect` | GoDaddy Domain Connect. Harmless. |
+| `CNAME` | `1576a42a-…` | Shopify's domain-ownership proof. Harmless to keep, and keeping it means re-attaching the domain to Shopify later needs no re-verification. |
+| `TXT` | `_dmarc` | Email authentication (`p=reject`). Nothing to do with the website. Deleting it would weaken your email security. |
+
+### Two things to expect
+
+**Up to an hour of mixed results.** The existing records have a 1-hour TTL, so
+resolvers that already cached `23.227.38.32` keep using it until that expires.
+Some visitors will see the Shopify page and some the new page during the
+changeover. This cannot be shortened after the fact — the *old* record's TTL is
+what governs. If you want a fast rollback path, set both records' TTL to the
+minimum (10 minutes) first, wait an hour, and then change the values.
+
+**Tidy up Shopify afterwards.** Once the new page is live, remove
+`rojafume.com` from Shopify (**Settings → Domains**). Nothing breaks if you skip
+this — Shopify simply stops receiving the traffic — but leaving it attached means
+Shopify keeps trying to renew a certificate for a domain it no longer serves.
+
+### If you ever move DNS to Cloudflare
+
+Does not apply today — you are on GoDaddy's nameservers. Noted in case that
+changes, because it is an easy half-hour to lose.
 
 Set both records to **DNS only** (grey cloud) until HTTPS is working — the
 orange-cloud proxy interferes with Let's Encrypt's domain check. Afterwards you
@@ -71,8 +102,11 @@ dig +short rojafume.com
 dig +short www.rojafume.com
 ```
 
-Both must print your VPS IP and nothing else. On Windows use
-`nslookup rojafume.com`.
+Both must print your VPS IP and nothing else. While the old records are still
+cached you may see `23.227.38.32` — that is the Shopify address, so wait for the
+TTL to expire rather than assuming the edit failed. On Windows use
+`nslookup rojafume.com 8.8.8.8` (asking Google's resolver sidesteps your own
+machine's cache; `ipconfig /flushdns` clears it).
 
 **Do not continue until they do.** Step 3 issues the certificate, and Let's
 Encrypt proves you own the domain by fetching a file *over* that domain. Wrong
