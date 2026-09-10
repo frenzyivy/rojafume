@@ -80,27 +80,19 @@ DNS means a failed certificate, and it rate-limits repeated failures.
 
 ---
 
-## Step 2 — Push the code to GitHub
+## Step 2 — Push the code to GitHub  ✅ done
 
-The repo is already initialised locally, with a first commit and the remote set
-to `https://github.com/frenzyivy/rojafume`. Push it:
+Already pushed: commit `f0a619b` is on `main` at
+<https://github.com/frenzyivy/rojafume>. Nothing to do here.
+
+For later changes, the loop is just:
 
 ```bash
 cd "C:/Users/DELL/Downloads/RojaFume Prelaunch"
-git push -u origin main
+git add -A
+git commit -m "..."
+git push
 ```
-
-Windows opens a browser to sign in to GitHub the first time. If it does not,
-authenticate the CLI once and retry:
-
-```bash
-gh auth login          # GitHub.com -> HTTPS -> login with a browser
-git push -u origin main
-```
-
-### Check it
-
-<https://github.com/frenzyivy/rojafume> lists the files.
 
 > **The repo is public.** Everything in it is fine to publish, but it does mean
 > anyone can read `public/index.html` and see the Apps Script endpoint URL. That
