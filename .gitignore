@@ -1,0 +1,21 @@
+# OS noise
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Nothing here needs a build step, but just in case
+node_modules/
+*.log
+
+# Never commit a deploy key or certificate. The GitHub Actions workflow reads
+# the key from a repository secret, not from a file.
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+known_hosts

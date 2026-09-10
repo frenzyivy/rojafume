@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RojaFume Fragrances — Launching Soon</title>
+<meta name="description" content="RojaFume Fragrances is launching soon. A one-time pre-launch offer, reserved for the first to sign up.">
+<meta name="theme-color" content="#0a0906">
+<!-- Absolute URLs: WhatsApp, Facebook and X fetch these from their own servers,
+     so a relative path resolves to nothing. Change the domain in all four if
+     you launch on a different one. -->
+<link rel="canonical" href="https://rojafume.com/">
+<meta property="og:url" content="https://rojafume.com/">
+<meta property="og:site_name" content="RojaFume Fragrances">
+<meta property="og:title" content="RojaFume Fragrances — Launching Soon">
+<meta property="og:description" content="A one-time pre-launch offer, reserved for the first to sign up.">
+<meta property="og:image" content="https://rojafume.com/rojafume-logo.png">
+<meta property="og:image:alt" content="RojaFume">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="rojafume-logo.png">
+<link rel="apple-touch-icon" href="rojafume-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --gold:#c9a44c;
+  --gold-lt:#e0c068;
+  --gold-dk:#b8963e;
+  --ink:#ffffff;
+  --black:#0a0906;
+  --ink-75:rgba(255,255,255,.75);
+  --ink-55:rgba(255,255,255,.55);
+  --ink-40:rgba(255,255,255,.4);
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+
+body{
+  min-height:100dvh;
+  background:#000;
+  color:var(--ink);
+  font-family:Poppins,system-ui,-apple-system,sans-serif;
+  font-weight:300;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+/* ---- stage: 1a desktop artboard (1440x900) ---- */
+.stage{
+  position:relative;
+  min-height:100dvh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding:64px 24px;
+  background:radial-gradient(ellipse 70% 60% at 50% 40%,#1a160c 0%,#0a0906 55%,#000 100%);
+}
+
+/* the two hairline rules that sit inside the artboard edge */
+.frame{
+  position:fixed;
+  inset:24px;
+  border:1px solid rgba(201,164,76,.25);
+  pointer-events:none;
+  z-index:2;
+}
+.frame--inner{
+  inset:32px;
+  border-color:rgba(201,164,76,.12);
+}
+
+/* letter-spacing adds a trailing gap after the last glyph; text-indent re-centres it */
+.eyebrow{
+  font-size:11px;
+  letter-spacing:.45em;
+  text-indent:.45em;
+  color:var(--gold);
+  text-transform:uppercase;
+  font-weight:500;
+}
+
+.rule{
+  width:1px;
+  height:40px;
+  background:linear-gradient(var(--gold),transparent);
+  margin:22px 0;
+}
+
+.logo{
+  width:340px;
+  max-width:100%;
+  height:auto;
+  display:block;
+}
+
+.tagline{
+  font-size:13px;
+  letter-spacing:.3em;
+  text-indent:.3em;
+  text-transform:uppercase;
+  color:var(--ink-55);
+  margin-top:28px;
+  font-weight:300;
+}
+
+.lede{
+  margin-top:56px;
+  max-width:520px;
+  font-size:14px;
+  line-height:1.8;
+  color:var(--ink-75);
+  font-weight:300;
+  text-wrap:pretty;
+}
+
+/* ---- signup ---- */
+.signup{
+  margin-top:32px;
+  width:min(760px,100%);
+}
+
+.row{
+  display:flex;
+  gap:12px;
+}
+.field{
+  flex:1;
+  min-width:0;
+}
+
+input{
+  width:100%;
+  height:54px;   /* 52px inner + the 1px hairline each side, as drawn */
+  padding:0 18px;
+  background:rgba(255,255,255,.03);
+  border:1px solid rgba(201,164,76,.4);
+  border-radius:0;
+  color:var(--ink);
+  font-family:Poppins,sans-serif;
+  font-size:14px;
+  font-weight:300;
+  letter-spacing:.04em;
+  outline:none;
+  transition:border-color .2s ease,background-color .2s ease;
+}
+input::placeholder{color:rgba(255,255,255,.4)}
+input:hover{border-color:rgba(201,164,76,.6)}
+input:focus{
+  border-color:var(--gold);
+  background:rgba(255,255,255,.06);
+}
+input:focus-visible{
+  outline:1px solid rgba(201,164,76,.55);
+  outline-offset:2px;
+}
+input[aria-invalid="true"]{border-color:#c2704a}
+
+.btn{
+  margin-top:14px;
+  width:100%;
+  height:54px;
+  background:linear-gradient(90deg,var(--gold-dk),var(--gold-lt),var(--gold-dk));
+  border:0;
+  color:var(--black);
+  font-family:Poppins,sans-serif;
+  font-size:13px;
+  font-weight:500;
+  letter-spacing:.3em;
+  text-indent:.3em;
+  text-transform:uppercase;
+  cursor:pointer;
+  transition:filter .2s ease;
+}
+.btn:hover{filter:brightness(1.08)}
+.btn:focus-visible{outline:1px solid var(--ink);outline-offset:3px}
+.btn[disabled]{cursor:progress;filter:saturate(.5) brightness(.85)}
+
+.note{
+  margin-top:18px;
+  font-size:11px;
+  letter-spacing:.12em;
+  color:var(--ink-40);
+  font-weight:300;
+}
+
+/* Stays in the DOM so the live region keeps announcing, but takes up no
+   room until it actually has a message — the artboards have no status line. */
+.status{
+  font-size:12px;
+  letter-spacing:.06em;
+  line-height:1.6;
+  color:#dd9b74;
+}
+.status:not(:empty){margin-top:14px}
+
+/* ---- post-submit confirmation ---- */
+.done{
+  margin-top:32px;
+  width:min(760px,100%);
+  border:1px solid rgba(201,164,76,.4);
+  background:rgba(255,255,255,.03);
+  padding:38px 32px;
+}
+.done h2{
+  font-size:15px;
+  font-weight:500;
+  letter-spacing:.28em;
+  text-indent:.28em;
+  text-transform:uppercase;
+  color:var(--gold);
+}
+.done p{
+  margin-top:16px;
+  font-size:13px;
+  line-height:1.8;
+  color:var(--ink-75);
+  font-weight:300;
+  text-wrap:pretty;
+}
+.done:focus{outline:none}
+
+/* honeypot — off-screen, never shown to a real visitor */
+.hp{
+  position:absolute;
+  left:-9999px;
+  width:1px;
+  height:1px;
+  opacity:0;
+}
+
+.sr-only{
+  position:absolute;
+  width:1px;height:1px;
+  padding:0;margin:-1px;
+  overflow:hidden;
+  clip:rect(0 0 0 0);
+  white-space:nowrap;
+  border:0;
+}
+
+.only-m{display:none}
+[hidden]{display:none !important}
+
+/* ---- 1b mobile artboard (390x844) ---- */
+@media (max-width:859px){
+  .stage{
+    background:radial-gradient(ellipse 90% 50% at 50% 30%,#1a160c 0%,#0a0906 55%,#000 100%);
+    padding:40px 24px;
+  }
+  .frame{inset:14px;border-color:rgba(201,164,76,.22)}
+  .frame--inner{display:none}
+
+  .eyebrow{font-size:10px;letter-spacing:.4em;text-indent:.4em}
+  .rule{height:30px;margin:18px 0}
+  .logo{width:220px}
+  .tagline{font-size:10px;letter-spacing:.28em;text-indent:.28em;margin-top:18px}
+  .lede{margin-top:36px;font-size:13px;line-height:1.7}
+
+  .signup{margin-top:28px}
+  .row{flex-direction:column;gap:10px}
+  input{height:52px;padding:0 16px}   /* 50px inner + hairlines */
+  .btn{margin-top:10px;height:52px;font-size:12px;letter-spacing:.28em;text-indent:.28em}
+  .note{margin-top:16px;font-size:10px;letter-spacing:.1em}
+
+  .done{margin-top:28px;padding:30px 24px}
+  .done h2{font-size:13px}
+
+  .only-d{display:none}
+  .only-m{display:inline}
+}
+
+/* keep it a single screen on short desktop windows */
+@media (min-width:860px) and (max-height:820px){
+  .logo{width:270px}
+  .tagline{margin-top:20px}
+  .lede{margin-top:32px}
+  .signup,.done{margin-top:24px}
+  .note{margin-top:14px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition:none !important;animation:none !important}
+}
+</style>
+</head>
+<body>
+
+<div class="frame" aria-hidden="true"></div>
+<div class="frame frame--inner" aria-hidden="true"></div>
+
+<main class="stage">
+  <div class="eyebrow">Launching soon</div>
+  <div class="rule" aria-hidden="true"></div>
+
+  <h1>
+    <img class="logo" src="rojafume-logo.png" alt="RojaFume" width="729" height="528">
+  </h1>
+
+  <div class="tagline">Crafting scented stories</div>
+
+  <p class="lede">
+    <span class="only-d">A one-time pre-launch offer, reserved for the first to sign up. Leave your details and be the first to know when our new perfumes arrive.</span>
+    <span class="only-m">A one-time pre-launch offer for the first to sign up. Be the first to know when our new perfumes arrive.</span>
+  </p>
+
+  <form class="signup" id="signup" novalidate>
+    <div class="row">
+      <div class="field">
+        <label class="sr-only" for="name">Full name</label>
+        <input id="name" name="name" type="text" placeholder="Full name" autocomplete="name" maxlength="80" required>
+      </div>
+      <div class="field">
+        <label class="sr-only" for="email">Email address</label>
+        <input id="email" name="email" type="email" placeholder="Email address" autocomplete="email" maxlength="254" required>
+      </div>
+      <div class="field">
+        <label class="sr-only" for="phone">Phone number</label>
+        <input id="phone" name="phone" type="tel" placeholder="Phone number" autocomplete="tel" maxlength="24" required>
+      </div>
+    </div>
+
+    <!-- bots fill this in; humans never see it -->
+    <div class="hp" aria-hidden="true">
+      <label for="company">Company</label>
+      <input id="company" name="company" type="text" tabindex="-1" autocomplete="off">
+    </div>
+
+    <button class="btn" id="submit" type="submit">Notify me</button>
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+  </form>
+
+  <section class="done" id="done" hidden>
+    <h2>You are on the list</h2>
+    <p id="doneMsg">Thank you. Your pre-launch offer is reserved — we will email you the moment RojaFume launches.</p>
+  </section>
+
+  <p class="note" id="note">
+    Offer valid once per person<span aria-hidden="true"> · </span><span class="only-d">No spam, ever</span><span class="only-m">No spam</span>
+  </p>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Apps Script Web App URL (see README.md) ──
+  var ENDPOINT = 'https://script.google.com/macros/s/AKfycbxI9xgioy6x8KXgywuODoyqaThN1zCOTqwpqdZZjoNkqVlm0ALAZCMiy91f9Gs17a13Lg/exec';
+
+  var form    = document.getElementById('signup');
+  var done    = document.getElementById('done');
+  var doneMsg = document.getElementById('doneMsg');
+  var note    = document.getElementById('note');
+  var button  = document.getElementById('submit');
+  var status  = document.getElementById('status');
+  var honey   = document.getElementById('company');
+
+  var fields = {
+    name:  document.getElementById('name'),
+    email: document.getElementById('email'),
+    phone: document.getElementById('phone')
+  };
+
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  function say(msg) {
+    status.textContent = msg || '';
+  }
+
+  function markInvalid(el) {
+    el.setAttribute('aria-invalid', 'true');
+    el.focus();
+  }
+
+  function clearInvalid() {
+    Object.keys(fields).forEach(function (key) {
+      fields[key].removeAttribute('aria-invalid');
+    });
+  }
+
+  // Returns a clean payload, or null after reporting the first problem.
+  function validate() {
+    clearInvalid();
+
+    var name  = fields.name.value.trim();
+    var email = fields.email.value.trim();
+    var phone = fields.phone.value.trim();
+
+    if (name.length < 2) {
+      markInvalid(fields.name);
+      say('Please enter your full name.');
+      return null;
+    }
+    if (email.length > 254 || !EMAIL_RE.test(email)) {
+      markInvalid(fields.email);
+      say('Please enter a valid email address.');
+      return null;
+    }
+
+    var digits = phone.replace(/\D/g, '');
+    if (digits.length < 7 || digits.length > 15) {
+      markInvalid(fields.phone);
+      say('Please enter a valid phone number.');
+      return null;
+    }
+
+    say('');
+    return {
+      name: name,
+      email: email,
+      phone: phone,
+      company: honey.value, // honeypot
+      page: location.href
+    };
+  }
+
+  function showConfirmation(message) {
+    form.hidden = true;
+    note.hidden = true;
+    if (message) { doneMsg.textContent = message; }
+    done.hidden = false;
+    done.setAttribute('tabindex', '-1');
+    done.focus();
+    try { localStorage.setItem('rojafume_signed_up', '1'); } catch (err) { /* private mode */ }
+  }
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+
+    var payload = validate();
+    if (!payload) { return; }
+
+    if (!ENDPOINT) {
+      say('Signup is not connected yet — add the Apps Script URL to index.html.');
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'Sending';
+    say('');
+
+    // 15s ceiling so a hung request cannot leave the button stuck.
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 15000);
+
+    // text/plain keeps this a "simple" request, so the browser skips the CORS
+    // preflight that Apps Script web apps do not answer.
+    fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      redirect: 'follow'
+    })
+      .then(function (res) {
+        if (!res.ok) { throw new Error('HTTP ' + res.status); }
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data || !data.ok) {
+          throw new Error((data && data.error) || 'Unknown error');
+        }
+        if (data.duplicate) {
+          showConfirmation('You are already on the list — we have your details and will be in touch at launch.');
+        } else {
+          showConfirmation();
+        }
+      })
+      .catch(function (err) {
+        var aborted = err && err.name === 'AbortError';
+        say(aborted
+          ? 'That took too long. Please check your connection and try again.'
+          : 'Sorry, we could not save your details. Please try again in a moment.');
+        button.disabled = false;
+        button.textContent = 'Notify me';
+      })
+      .then(function () {
+        clearTimeout(timer);
+      });
+  });
+
+  // Clear the error styling as soon as the visitor starts fixing the field.
+  Object.keys(fields).forEach(function (key) {
+    fields[key].addEventListener('input', function () {
+      fields[key].removeAttribute('aria-invalid');
+      say('');
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

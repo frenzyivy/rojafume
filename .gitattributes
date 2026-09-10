@@ -1,0 +1,16 @@
+# Default: let git normalise text in the repo.
+* text=auto
+
+# These MUST be LF in the working tree, not just in the repo. They run on Linux,
+# and a CRLF shell script fails immediately with:
+#     bash: $'\r': command not found
+# A Windows checkout would otherwise convert them and break the deploy.
+*.sh      text eol=lf
+*.conf    text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.gs      text eol=lf
+
+# Binary — never touch these.
+*.png     binary
+*.cdr     binary

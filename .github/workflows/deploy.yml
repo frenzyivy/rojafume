@@ -1,0 +1,132 @@
+# Publishes public/ to the VPS on every push to main.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#
+#   VPS_HOST      the server's IP or hostname, e.g. 203.0.113.10
+#   VPS_USER      the SSH user, e.g. root or deploy
+#   VPS_SSH_KEY   the PRIVATE half of a key whose public half is in that
+#                 user's ~/.ssh/authorized_keys — paste the whole file,
+#                 including the BEGIN and END lines
+#   VPS_PATH      the webroot, e.g. /var/www/rojafume
+#
+# Optional:
+#   VPS_PORT             SSH port, if not 22
+#   VPS_SSH_KNOWN_HOSTS  output of `ssh-keyscan your.server`. Set this to pin
+#                        the host key; without it the run trusts whatever key
+#                        the server presents on first contact.
+#
+# Step-by-step setup is in DEPLOY.md.
+
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+    # Only the deployed files and this workflow can change the live site.
+    # Editing README.md or apps-script/Code.gs does not trigger a deploy.
+    paths:
+      - 'public/**'
+      - 'deploy/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:        # lets you deploy by hand from the Actions tab
+
+# Never let two deploys write to the webroot at once. A newer push cancels an
+# in-flight older one rather than racing it.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sanity-check what we are about to publish
+        run: |
+          test -f public/index.html || { echo "::error::public/index.html is missing"; exit 1; }
+          test -f public/rojafume-logo.png || { echo "::error::public/rojafume-logo.png is missing"; exit 1; }
+          # The page is useless without a configured endpoint — catch it here
+          # rather than after people start submitting into nothing.
+          grep -q "var ENDPOINT = 'https://script.google.com/" public/index.html \
+            || { echo "::error::ENDPOINT is not set in public/index.html"; exit 1; }
+          echo "Publishing:"
+          find public -type f -printf '  %p  (%s bytes)\n'
+
+      - name: Set up the SSH key
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_SSH_KNOWN_HOSTS }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          test -n "$SSH_KEY" || { echo "::error::the VPS_SSH_KEY secret is not set"; exit 1; }
+          test -n "$VPS_HOST" || { echo "::error::the VPS_HOST secret is not set"; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+            echo "Host key pinned from the VPS_SSH_KNOWN_HOSTS secret."
+          else
+            ssh-keyscan -p "${VPS_PORT:-22}" -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+            echo "::warning::Host key taken from ssh-keyscan. Set VPS_SSH_KNOWN_HOSTS to pin it."
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Publish public/ to the webroot
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          test -n "$VPS_PATH" || { echo "::error::the VPS_PATH secret is not set"; exit 1; }
+          # Trailing slash on the source: copy the CONTENTS of public/, not the
+          # directory itself. --delete removes files dropped from the repo.
+          rsync -av --delete --itemize-changes \
+            -e "ssh -i ~/.ssh/id_deploy -p ${VPS_PORT:-22} -o StrictHostKeyChecking=yes" \
+            public/ "$VPS_USER@$VPS_HOST:$VPS_PATH/"
+
+      - name: Fix ownership so nginx can read the files
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          # rsync leaves the files owned by the SSH user. nginx runs as
+          # www-data, so it needs the group and the read bits. `|| true`
+          # because a non-root deploy user cannot chown, and does not need to
+          # when the webroot group is already right.
+          ssh -i ~/.ssh/id_deploy -p "${VPS_PORT:-22}" \
+              -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
+            "chgrp -R www-data '$VPS_PATH' 2>/dev/null || true; \
+             find '$VPS_PATH' -type d -exec chmod 755 {} + ; \
+             find '$VPS_PATH' -type f -exec chmod 644 {} + "
+
+      - name: Verify the live site actually serves the new page
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          # Set a repository variable SITE_URL (e.g. https://rojafume.com) to
+          # turn this check on. Without it the deploy still succeeds, unverified.
+          if [ -z "$SITE_URL" ]; then
+            echo "::warning::Set a SITE_URL repository variable to verify deploys."
+            exit 0
+          fi
+          fail=0
+          for path in "/" "/rojafume-logo.png"; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$SITE_URL$path" || echo 000)
+            echo "$SITE_URL$path -> $code"
+            [ "$code" = "200" ] || fail=1
+          done
+          # The deployed HTML must be the HTML we just pushed.
+          if ! curl -sS --max-time 20 "$SITE_URL/" | grep -q "RojaFume"; then
+            echo "::error::the live page did not contain the expected content"
+            fail=1
+          fi
+          [ "$fail" = "0" ] || { echo "::error::the live site did not verify"; exit 1; }
+          echo "Live and verified: $SITE_URL"
