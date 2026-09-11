@@ -65,6 +65,30 @@ render_site_config() {
     fi
 }
 
+# Where does THIS nginx actually read vhosts from?
+#
+# Guessing the path is how the first two attempts failed. `nginx -T` dumps the
+# effective config, prefixing every file it read with "# configuration file
+# <path>:". Any directory that never appears there is a directory nginx ignores
+# — drop a vhost in it and nginx -t still passes while the site stays invisible.
+# So: ask nginx, do not assume.
+detect_site_dir() {
+    local dir
+    while read -r dir; do
+        [[ -n "$dir" && -d "$dir" && "$dir" != "/etc/nginx" ]] || continue
+        # Prefer a loaded directory that already holds vhosts, so we never drop
+        # a site into a snippets or modules folder.
+        if grep -rlsq 'server_name' "$dir" 2>/dev/null; then
+            printf '%s\n' "$dir"
+            return 0
+        fi
+    done < <(nginx -T 2>/dev/null \
+               | sed -n 's/^# configuration file \(.*\):$/\1/p' \
+               | xargs -r -n1 dirname | sort | uniq -c | sort -rn | awk '{print $2}')
+
+    printf '%s\n' /etc/nginx/sites-enabled
+}
+
 
 [[ $EUID -eq 0 ]] || die "run this with sudo"
 [[ -n "$EMAIL" ]] || die "set EMAIL=you@example.com — Let's Encrypt needs it for expiry warnings"
@@ -78,6 +102,11 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq nginx certbot rsync >/dev/null
 ok "packages ready"
+
+SITE_DIR="$(detect_site_dir)"
+mkdir -p "$SITE_DIR"
+VHOST="$SITE_DIR/$SITE_FILE"
+ok "nginx loads vhosts from $SITE_DIR"
 
 # ─── 2. Webroot ──────────────────────────────────────────────────────────────
 say "Publishing the page"
@@ -97,10 +126,10 @@ fi
 # An earlier version of this script wrote the vhost without the .conf suffix,
 # where an *.conf include never picked it up. Clear it out so the two cannot
 # both exist and declare the same server_name.
-for legacy in "/etc/nginx/sites-enabled/$SITE_NAME" "/etc/nginx/sites-available/$SITE_NAME"; do
-    if [[ -e "$legacy" || -L "$legacy" ]]; then
+for legacy in "/etc/nginx/sites-enabled/$SITE_NAME" "/etc/nginx/sites-available/$SITE_NAME"               "/etc/nginx/sites-enabled/$SITE_FILE" "/etc/nginx/sites-available/$SITE_FILE"               "/etc/nginx/conf.d/$SITE_FILE"; do
+    if [[ "$legacy" != "$VHOST" && ( -e "$legacy" || -L "$legacy" ) ]]; then
         rm -f "$legacy"
-        ok "removed the old extensionless vhost $legacy"
+        ok "removed a stale copy of the vhost at $legacy"
     fi
 done
 
@@ -110,7 +139,7 @@ done
 # first, which is also what Let's Encrypt needs to verify the domain.
 if [[ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
     say "Serving over HTTP so Let's Encrypt can verify the domain"
-    cat > "/etc/nginx/sites-available/$SITE_FILE" <<HTTPCONF
+    cat > "$VHOST" <<HTTPCONF
 server {
     listen 80;
     listen [::]:80;
@@ -120,7 +149,6 @@ server {
     location / { try_files \$uri \$uri/ /index.html; }
 }
 HTTPCONF
-    ln -sfn "/etc/nginx/sites-available/$SITE_FILE" "/etc/nginx/sites-enabled/$SITE_FILE"
     nginx -t || die "nginx rejected the temporary HTTP config"
     systemctl reload nginx || systemctl restart nginx
 
@@ -197,8 +225,7 @@ fi
 
 # ─── 5. Full HTTPS config ────────────────────────────────────────────────────
 say "Installing the HTTPS config"
-render_site_config "/etc/nginx/sites-available/$SITE_FILE"
-ln -sfn "/etc/nginx/sites-available/$SITE_FILE" "/etc/nginx/sites-enabled/$SITE_FILE"
+render_site_config "$VHOST"
 nginx -t || die "nginx rejected the HTTPS config — nothing was reloaded, the site is still up"
 # reload needs nginx already running; restart covers a stopped or crashed one.
 systemctl reload nginx || systemctl restart nginx
