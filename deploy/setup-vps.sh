@@ -29,6 +29,30 @@ say()  { printf '\n\033[1;33m==> %s\033[0m\n' "$1"; }
 ok()   { printf '    \033[0;32m✓\033[0m %s\n' "$1"; }
 die()  { printf '\n\033[0;31mERROR: %s\033[0m\n' "$1" >&2; exit 1; }
 
+# Renders the site config for this DOMAIN/WEBROOT, adapting to the nginx version.
+#
+# nginx gained the standalone `http2 on;` directive in 1.25.1. Ubuntu 24.04
+# ships nginx 1.24, where it is an UNKNOWN DIRECTIVE and `nginx -t` fails
+# outright. So on older nginx, drop it and use the classic `listen ... http2`
+# parameter instead: same result, syntax the running nginx actually understands.
+render_site_config() {
+    local dst="$1"
+    sed "s/rojafume\.com/$DOMAIN/g; s#/var/www/rojafume#$WEBROOT#g" \
+        "$REPO_DIR/deploy/nginx-rojafume.conf" > "$dst"
+
+    local ver
+    ver="$(nginx -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+    [[ -n "$ver" ]] || return 0
+
+    # If the LOWER of (ver, 1.25.1) is 1.25.1, then ver >= 1.25.1 — leave as is.
+    if [[ "$(printf '%s\n' "$ver" "1.25.1" | sort -V | head -1)" != "1.25.1" ]]; then
+        sed -i "s/^\( *\)http2 on;/\1# http2 on;  -- nginx $ver predates 1.25.1, so http2 is set on the listen lines/" "$dst"
+        sed -i 's/^\( *\)listen 443 ssl;/\1listen 443 ssl http2;/'           "$dst"
+        sed -i 's/^\( *\)listen \[::\]:443 ssl;/\1listen [::]:443 ssl http2;/' "$dst"
+    fi
+}
+
+
 [[ $EUID -eq 0 ]] || die "run this with sudo"
 [[ -n "$EMAIL" ]] || die "set EMAIL=you@example.com — Let's Encrypt needs it for expiry warnings"
 [[ -f "$REPO_DIR/public/index.html" ]] || die "public/index.html not found next to this script (expected at $REPO_DIR/public)"
@@ -93,12 +117,12 @@ fi
 
 # ─── 5. Full HTTPS config ────────────────────────────────────────────────────
 say "Installing the HTTPS config"
-sed "s/rojafume\.com/$DOMAIN/g; s#/var/www/rojafume#$WEBROOT#g" \
-    "$REPO_DIR/deploy/nginx-rojafume.conf" > "/etc/nginx/sites-available/$SITE_NAME"
+render_site_config "/etc/nginx/sites-available/$SITE_NAME"
 ln -sfn "/etc/nginx/sites-available/$SITE_NAME" "/etc/nginx/sites-enabled/$SITE_NAME"
 nginx -t || die "nginx rejected the HTTPS config — nothing was reloaded, the site is still up"
-systemctl reload nginx
-ok "nginx reloaded"
+# reload needs nginx already running; restart covers a stopped or crashed one.
+systemctl reload nginx || systemctl restart nginx
+ok "nginx $(nginx -v 2>&1 | grep -oE '[0-9]+[.][0-9]+[.][0-9]+' | head -1) reloaded"
 
 # Renewal: the certbot package installs a systemd timer that handles this. The
 # hook makes nginx pick up the renewed certificate without a manual reload.
