@@ -16,6 +16,9 @@ set -euo pipefail
 DOMAIN="${DOMAIN:-rojafume.com}"
 WEBROOT="/var/www/${DOMAIN%%.*}"
 SITE_NAME="${DOMAIN%%.*}"
+# Must end in .conf — a CloudPanel/Plesk nginx includes sites-enabled/*.conf
+# only, and silently ignores anything else. See setup-vps.sh for the detail.
+SITE_FILE="$SITE_NAME.conf"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 say() { printf '\n\033[1;33m==> %s\033[0m\n' "$1"; }
@@ -83,9 +86,9 @@ EXPECTED="$(mktemp)"
 trap 'rm -f "$EXPECTED"' EXIT
 render_site_config "$EXPECTED"
 
-if ! cmp -s "$EXPECTED" "/etc/nginx/sites-available/$SITE_NAME"; then
+if ! cmp -s "$EXPECTED" "/etc/nginx/sites-available/$SITE_FILE"; then
     say "The nginx config changed — installing it"
-    cp "$EXPECTED" "/etc/nginx/sites-available/$SITE_NAME"
+    cp "$EXPECTED" "/etc/nginx/sites-available/$SITE_FILE"
     # nginx -t before reload: a bad config would otherwise take the site down.
     nginx -t || die "nginx rejected the new config; the running config is untouched and the site is still up"
     systemctl reload nginx

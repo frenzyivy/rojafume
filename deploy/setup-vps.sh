@@ -23,6 +23,19 @@ DOMAIN="${DOMAIN:-rojafume.com}"
 EMAIL="${EMAIL:-}"
 WEBROOT="/var/www/${DOMAIN%%.*}"
 SITE_NAME="${DOMAIN%%.*}"
+
+# The vhost filename MUST end in .conf.
+#
+# Debian's stock nginx.conf has `include /etc/nginx/sites-enabled/*;`, which
+# matches any filename — but a CloudPanel/Plesk/ISPConfig box uses
+# `include /etc/nginx/sites-enabled/*.conf;` instead. On those, a file without
+# the extension is SILENTLY IGNORED: nginx -t passes because the file is never
+# parsed, the site is treated as an unknown host, and the catch-all vhost
+# answers with 444 (connection closed, no response). Let's Encrypt then fails
+# with "Error getting validation data".
+#
+# `.conf` satisfies both include patterns, so it is always the right choice.
+SITE_FILE="$SITE_NAME.conf"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 say()  { printf '\n\033[1;33m==> %s\033[0m\n' "$1"; }
@@ -81,13 +94,23 @@ if [[ -L /etc/nginx/sites-enabled/default ]]; then
     ok "removed nginx's default site"
 fi
 
+# An earlier version of this script wrote the vhost without the .conf suffix,
+# where an *.conf include never picked it up. Clear it out so the two cannot
+# both exist and declare the same server_name.
+for legacy in "/etc/nginx/sites-enabled/$SITE_NAME" "/etc/nginx/sites-available/$SITE_NAME"; do
+    if [[ -e "$legacy" || -L "$legacy" ]]; then
+        rm -f "$legacy"
+        ok "removed the old extensionless vhost $legacy"
+    fi
+done
+
 # ─── 3. Plain HTTP first ─────────────────────────────────────────────────────
 # The real config references certificate files. They do not exist yet, and nginx
 # refuses to start when a referenced certificate is missing — so serve HTTP
 # first, which is also what Let's Encrypt needs to verify the domain.
 if [[ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
     say "Serving over HTTP so Let's Encrypt can verify the domain"
-    cat > "/etc/nginx/sites-available/$SITE_NAME" <<HTTPCONF
+    cat > "/etc/nginx/sites-available/$SITE_FILE" <<HTTPCONF
 server {
     listen 80;
     listen [::]:80;
@@ -97,10 +120,67 @@ server {
     location / { try_files \$uri \$uri/ /index.html; }
 }
 HTTPCONF
-    ln -sfn "/etc/nginx/sites-available/$SITE_NAME" "/etc/nginx/sites-enabled/$SITE_NAME"
+    ln -sfn "/etc/nginx/sites-available/$SITE_FILE" "/etc/nginx/sites-enabled/$SITE_FILE"
     nginx -t || die "nginx rejected the temporary HTTP config"
-    systemctl reload nginx
-    ok "http://$DOMAIN should now show the page"
+    systemctl reload nginx || systemctl restart nginx
+
+    # ─── 3b. Prove the vhost is really being served ──────────────────────────
+    # Do NOT call certbot on faith. Let's Encrypt rate-limits failed validations
+    # (5 per hostname per hour), so a wasted attempt is expensive. Put a real
+    # file where the ACME challenge will go and fetch it exactly the way Let's
+    # Encrypt will: plain HTTP, with this Host header.
+    say "Checking the challenge path is reachable before asking for a certificate"
+    mkdir -p "$WEBROOT/.well-known/acme-challenge"
+    SELFTEST="rojafume-selftest-$$"
+    echo "$SELFTEST" > "$WEBROOT/.well-known/acme-challenge/$SELFTEST"
+    chown -R www-data:www-data "$WEBROOT/.well-known" 2>/dev/null || true
+
+    CHALLENGE_URL="http://$DOMAIN/.well-known/acme-challenge/$SELFTEST"
+
+    # Force the connection to this machine, but keep the Host header as the
+    # real domain — the Host header is what selects the vhost.
+    probe_local() {
+        curl -sS --max-time 15 --resolve "$DOMAIN:80:127.0.0.1" "$CHALLENGE_URL" 2>/dev/null
+    }
+    # No --resolve here: real DNS over the public internet, exactly as Let's
+    # Encrypt does it. (--resolve takes an IP, never a hostname.)
+    probe_public() {
+        curl -sS --max-time 20 "$CHALLENGE_URL" 2>/dev/null
+    }
+
+    if [[ "$(probe_local || true)" != "$SELFTEST" ]]; then
+        rm -f "$WEBROOT/.well-known/acme-challenge/$SELFTEST"
+        die "nginx is not serving $DOMAIN on port 80, so the certificate would fail.
+
+       Almost always this means the vhost is not being loaded. Check which
+       filenames this server's nginx actually includes:
+
+         grep -rn 'include.*sites-enabled' /etc/nginx/nginx.conf
+         ls -l /etc/nginx/sites-enabled/
+
+       If the include ends in '*.conf', the vhost file must too — this script
+       writes '$SITE_FILE', which satisfies both forms.
+
+       Also check nothing else already claims this name:
+
+         grep -rn 'server_name .*$DOMAIN' /etc/nginx/"
+    fi
+    ok "served locally"
+
+    # Now the same fetch over the public internet. This is the one Let's Encrypt
+    # actually performs, so it also catches a closed port 80 or wrong DNS.
+    if [[ "$(probe_public || true)" != "$SELFTEST" ]]; then
+        rm -f "$WEBROOT/.well-known/acme-challenge/$SELFTEST"
+        die "the vhost works locally but not from the internet, so the certificate would fail.
+
+       Check, in this order:
+         dig +short $DOMAIN            # must be this server's public IP
+         dig +short www.$DOMAIN        # the certificate covers both
+         ufw status                    # 80 and 443 must be allowed
+       And your VPS provider's own firewall, which sits outside the machine."
+    fi
+    rm -f "$WEBROOT/.well-known/acme-challenge/$SELFTEST"
+    ok "reachable from the internet — safe to request the certificate"
 
     # ─── 4. Certificate ──────────────────────────────────────────────────────
     say "Requesting the certificate"
@@ -117,8 +197,8 @@ fi
 
 # ─── 5. Full HTTPS config ────────────────────────────────────────────────────
 say "Installing the HTTPS config"
-render_site_config "/etc/nginx/sites-available/$SITE_NAME"
-ln -sfn "/etc/nginx/sites-available/$SITE_NAME" "/etc/nginx/sites-enabled/$SITE_NAME"
+render_site_config "/etc/nginx/sites-available/$SITE_FILE"
+ln -sfn "/etc/nginx/sites-available/$SITE_FILE" "/etc/nginx/sites-enabled/$SITE_FILE"
 nginx -t || die "nginx rejected the HTTPS config — nothing was reloaded, the site is still up"
 # reload needs nginx already running; restart covers a stopped or crashed one.
 systemctl reload nginx || systemctl restart nginx
@@ -140,11 +220,38 @@ if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "^Status: activ
     ok "ufw: opened 80/443"
 fi
 
-say "Done"
+# ─── 7. Verify, rather than assume ───────────────────────────────────────────
+# The script has claimed success at this point before while the site was in fact
+# unreachable. Prove it instead.
+say "Verifying the live site"
+FAILED=0
+for url in "https://$DOMAIN/" "https://$DOMAIN/rojafume-logo.png" "http://$DOMAIN/"; do
+    code="$(curl -sS -o /dev/null -m 20 -w '%{http_code}' -L "$url" 2>/dev/null || echo 000)"
+    if [[ "$code" == "200" ]]; then
+        ok "$url -> $code"
+    else
+        printf '    \033[0;31m✗\033[0m %s -> %s\n' "$url" "$code"
+        FAILED=1
+    fi
+done
+
+if curl -sS -m 20 -L "https://$DOMAIN/" 2>/dev/null | grep -q "RojaFume"; then
+    ok "the page served is the RojaFume page"
+else
+    printf '    \033[0;31m✗\033[0m the page served does not look like the RojaFume page\n'
+    FAILED=1
+fi
+
+if [[ "$FAILED" != "0" ]]; then
+    die "the site is not serving correctly yet. Nothing above was rolled back —
+       re-run this script once you have fixed the cause. Useful checks:
+         nginx -T | grep -n 'server_name .*$DOMAIN'
+         tail -50 /var/log/nginx/error.log
+         systemctl status nginx --no-pager"
+fi
+
+say "Done — the site is live"
 echo "    https://$DOMAIN"
 echo "    https://www.$DOMAIN  -> redirects to the apex"
 echo
-echo "    Check the certificate and headers:"
-echo "      curl -sSI https://$DOMAIN | head -20"
-echo
-echo "    Then submit a real signup and confirm it reaches the sheet and the inbox."
+echo "    Next: submit a real signup and confirm it reaches the sheet and the inbox."

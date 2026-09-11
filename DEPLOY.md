@@ -14,14 +14,34 @@ Everything is known now except your SSH login.
 | SSH | `root@187.127.171.219` (or your sudo user) |
 | Let's Encrypt contact | `rojaperfumes0405@gmail.com` |
 
-Checked from here on 10 Sep 2026: SSH answers on port 22 (OpenSSH 9.6p1,
-Ubuntu 24.04), and ports 80 and 443 accept connections but **no web server
-replies on either** — which is the expected state of a box that has not been set
-up yet. Nothing there to conflict with. If you think something *is* already
-serving web traffic on it, check before running the setup script:
+### This VPS is not a bare box — read this before running anything
+
+Corrected 11 Sep 2026. The server already runs **CloudPanel** and hosts several
+live sites, among them `allianzabiz.com`, `crm.allianzabiz.com`,
+`lead.allianzabiz.com` and `track.allianzatech.com`. My first probe reported
+"no web server" because nginx answers unknown hostnames with `444` (close the
+connection, send nothing), which from outside is indistinguishable from nothing
+listening. It is in fact a busy nginx.
+
+Two consequences:
+
+1. **The setup script must not disturb the other sites.** It only ever adds its
+   own vhost file and reloads nginx after `nginx -t` passes, so a bad config
+   cannot take the others down. All four sites above were verified still serving
+   after the first run.
+2. **The vhost filename must end in `.conf`.** CloudPanel's `nginx.conf` uses
+   `include /etc/nginx/sites-enabled/*.conf;`, unlike Debian's stock
+   `include /etc/nginx/sites-enabled/*;`. A file without the extension is
+   silently ignored — `nginx -t` still passes, because the file is never parsed —
+   and the site behaves as an unknown host. This is exactly what made the first
+   certificate attempt fail.
+
+To see what the box is running:
 
 ```bash
 sudo ss -tlnp | grep -E ':80|:443'
+grep -rn 'include.*sites-enabled' /etc/nginx/nginx.conf
+ls -l /etc/nginx/sites-enabled/
 ```
 
 ---
