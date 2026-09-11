@@ -20,12 +20,15 @@ served over HTTP.
 **Going live — domain, VPS and automatic deploys — is in [DEPLOY.md](DEPLOY.md).**
 This file covers the form backend.
 
-**Status.** The page is wired to a deployed Apps Script endpoint, and every
-request path answers correctly *except* the one that writes to the sheet — a
-valid signup still comes back `Server error`, so submissions are not being saved
-yet. The cause is isolated to reaching the spreadsheet; the fix is
+**The page is live at <https://rojafume.com>** over HTTPS. Deployment is
+described in [DEPLOY.md](DEPLOY.md).
+
+**The form is not saving yet.** Every request path answers correctly *except*
+the one that writes to the sheet — a valid signup still comes back
+`Server error`, so submissions are lost. The cause is isolated to reaching the
+spreadsheet; the fix is
 [Troubleshooting → fill in `SPREADSHEET_ID`](#the-reliable-fix-fill-in-spreadsheet_id).
-Steps 1–4 below are the full setup from scratch.
+Steps 1–4 below are the full backend setup from scratch.
 
 ---
 

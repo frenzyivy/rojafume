@@ -1,199 +1,59 @@
-# Going live
+# Deployment
 
-Domain → VPS → automatic deploys from GitHub. Follow the steps in order; each
-one ends with a check, so you know it worked before moving on.
+**The site is live at <https://rojafume.com>.** This describes how it is set up
+and how to change it.
 
-## What you need to hand
+## How it is wired
 
-Everything is known now except your SSH login.
-
-| | Value |
+| | |
 | --- | --- |
-| Domain | `rojafume.com` |
-| VPS | `187.127.171.219` — Hostinger, Ubuntu 24.04, reverse DNS `srv1693456.hstgr.cloud` |
-| SSH | `root@187.127.171.219` (or your sudo user) |
-| Let's Encrypt contact | `rojaperfumes0405@gmail.com` |
+| Domain | `rojafume.com` + `www.rojafume.com`, DNS at GoDaddy (`ns25`/`ns26.domaincontrol.com`) |
+| Server | `187.127.171.219` — Hostinger VPS, Ubuntu 24.04, running **CloudPanel** |
+| Site | a CloudPanel **Static Site**, site user `rojafumee` |
+| Webroot | `/home/rojafumee/htdocs/rojafume.com` |
+| Certificate | Let's Encrypt, both names, issued 11 Sep 2026, auto-renewed by CloudPanel |
+| Repo checkout on the server | `/opt/rojafume` |
 
-### This VPS is not a bare box — read this before running anything
+**CloudPanel owns nginx and the certificate.** Do not hand-write nginx vhosts on
+this server — see *Lessons* at the bottom for what happens when you do. Anything
+that needs changing in nginx is changed in CloudPanel's **Vhost** tab.
 
-Corrected 11 Sep 2026. The server already runs **CloudPanel** and hosts several
-live sites, among them `allianzabiz.com`, `crm.allianzabiz.com`,
-`lead.allianzabiz.com` and `track.allianzatech.com`. My first probe reported
-"no web server" because nginx answers unknown hostnames with `444` (close the
-connection, send nothing), which from outside is indistinguishable from nothing
-listening. It is in fact a busy nginx.
-
-Two consequences:
-
-1. **The setup script must not disturb the other sites.** It only ever adds its
-   own vhost file and reloads nginx after `nginx -t` passes, so a bad config
-   cannot take the others down. All four sites above were verified still serving
-   after the first run.
-2. **The vhost filename must end in `.conf`.** CloudPanel's `nginx.conf` uses
-   `include /etc/nginx/sites-enabled/*.conf;`, unlike Debian's stock
-   `include /etc/nginx/sites-enabled/*;`. A file without the extension is
-   silently ignored — `nginx -t` still passes, because the file is never parsed —
-   and the site behaves as an unknown host. This is exactly what made the first
-   certificate attempt fail.
-
-To see what the box is running:
-
-```bash
-sudo ss -tlnp | grep -E ':80|:443'
-grep -rn 'include.*sites-enabled' /etc/nginx/nginx.conf
-ls -l /etc/nginx/sites-enabled/
-```
+This VPS also hosts unrelated production sites (`allianzabiz.com`,
+`crm.allianzabiz.com`, `lead.allianzabiz.com`, `track.allianzatech.com`). Nothing
+in this repo touches them, and nothing here should.
 
 ---
 
-## Step 1 — Point the domain at the VPS
+## Changing the page
 
-DNS for `rojafume.com` is at GoDaddy (`ns25`/`ns26.domaincontrol.com`). Edit it
-in whichever panel you already use.
-
-### What is there now
-
-The domain is currently attached to Shopify. Checked 10 Sep 2026:
-
-```
-rojafume.com       -> 23.227.38.32        Shopify (SHOPIFY-NET), serves the storefront
-www.rojafume.com   -> shops.myshopify.com 301 -> https://rojaperfume.in/
-```
-
-`23.227.38.32` is **Shopify's** shared IP, not a server of yours. Your live
-store is `rojaperfume.in`; `rojafume.com` is a second domain pointed at the same
-Shopify store. Detaching it **does not affect `rojaperfume.in`**.
-
-### Change exactly two records
-
-| | Type | Name | Data | Action |
-| --- | --- | --- | --- | --- |
-| 1 | `A` | `@` | `23.227.38.32` → **`187.127.171.219`** | **edit** |
-| 2 | `CNAME` | `www` | `shops.myshopify.com.` | **delete** |
-| 3 | `A` | `www` | **`187.127.171.219`** | **add** |
-
-Rows 2 and 3 are one change in two moves. **DNS does not allow a `CNAME` and an
-`A` record on the same name**, so the `CNAME` for `www` has to go before the `A`
-record for `www` can be added. Doing it the other way round makes the panel throw
-an error that looks like a bug.
-
-### Leave these alone
-
-| Type | Name | Why |
-| --- | --- | --- |
-| `NS` ×2 | `@` | GoDaddy's nameservers. Changing these takes DNS away from this panel entirely. |
-| `SOA` | `@` | Managed by the nameservers, not editable in any useful way. |
-| `CNAME` | `_domainconnect` | GoDaddy Domain Connect. Harmless. |
-| `CNAME` | `1576a42a-…` | Shopify's domain-ownership proof. Harmless to keep, and keeping it means re-attaching the domain to Shopify later needs no re-verification. |
-| `TXT` | `_dmarc` | Email authentication (`p=reject`). Nothing to do with the website. Deleting it would weaken your email security. |
-
-### Two things to expect
-
-**Up to an hour of mixed results.** The existing records have a 1-hour TTL, so
-resolvers that already cached `23.227.38.32` keep using it until that expires.
-Some visitors will see the Shopify page and some the new page during the
-changeover. This cannot be shortened after the fact — the *old* record's TTL is
-what governs. If you want a fast rollback path, set both records' TTL to the
-minimum (10 minutes) first, wait an hour, and then change the values.
-
-**Tidy up Shopify afterwards.** Once the new page is live, remove
-`rojafume.com` from Shopify (**Settings → Domains**). Nothing breaks if you skip
-this — Shopify simply stops receiving the traffic — but leaving it attached means
-Shopify keeps trying to renew a certificate for a domain it no longer serves.
-
-### If you ever move DNS to Cloudflare
-
-Does not apply today — you are on GoDaddy's nameservers. Noted in case that
-changes, because it is an easy half-hour to lose.
-
-Set both records to **DNS only** (grey cloud) until HTTPS is working — the
-orange-cloud proxy interferes with Let's Encrypt's domain check. Afterwards you
-can turn the proxy on, and if you do, set **SSL/TLS → Overview → Full (strict)**.
-Any other mode ("Flexible" especially) causes a redirect loop with the config in
-this repo.
-
-### Check it
+Edit `public/index.html`, then:
 
 ```bash
-dig +short rojafume.com
-dig +short www.rojafume.com
-```
-
-Both must print `187.127.171.219` and nothing else. While the old records are still
-cached you may see `23.227.38.32` — that is the Shopify address, so wait for the
-TTL to expire rather than assuming the edit failed. On Windows use
-`nslookup rojafume.com 8.8.8.8` (asking Google's resolver sidesteps your own
-machine's cache; `ipconfig /flushdns` clears it).
-
-**Do not continue until they do.** Step 3 issues the certificate, and Let's
-Encrypt proves you own the domain by fetching a file *over* that domain. Wrong
-DNS means a failed certificate, and it rate-limits repeated failures.
-
----
-
-## Step 2 — Push the code to GitHub  ✅ done
-
-Already pushed: commit `f0a619b` is on `main` at
-<https://github.com/frenzyivy/rojafume>. Nothing to do here.
-
-For later changes, the loop is just:
-
-```bash
-cd "C:/Users/DELL/Downloads/RojaFume Prelaunch"
 git add -A
 git commit -m "..."
 git push
 ```
 
-> **The repo is public.** Everything in it is fine to publish, but it does mean
-> anyone can read `public/index.html` and see the Apps Script endpoint URL. That
-> URL only accepts writes and returns nothing about existing signups, so there is
-> no secret in it — see the last note in `README.md`. The diagnostics token that
-> used to sit in `apps-script/Code.gs` now lives in a Script Property, precisely
-> so it is not in this repo.
+Once the GitHub Actions deploy is switched on (below), that is the whole job.
+Until then, publish by hand from the server:
+
+```bash
+cd /opt/rojafume && git pull && \
+  rsync -a --delete --exclude '.well-known' public/ /home/rojafumee/htdocs/rojafume.com/ && \
+  chown -R rojafumee:rojafumee /home/rojafumee/htdocs/rojafume.com
+```
+
+> `--exclude '.well-known'` is not optional. Let's Encrypt writes its renewal
+> tokens there. Delete that directory and the certificate quietly fails to renew,
+> and the site goes insecure about 90 days later with no warning.
 
 ---
 
-## Step 3 — First deploy on the VPS
+## Switching on deploy-on-push
 
-SSH in, clone the repo, run the bootstrap script:
+### 1. Make a key for GitHub to use
 
-```bash
-ssh root@187.127.171.219
-
-apt-get update && apt-get install -y git
-git clone https://github.com/frenzyivy/rojafume.git /opt/rojafume
-cd /opt/rojafume
-
-sudo DOMAIN=rojafume.com EMAIL=rojaperfumes0405@gmail.com bash deploy/setup-vps.sh
-```
-
-That script installs nginx and certbot, publishes `public/` to
-`/var/www/rojafume`, serves it over plain HTTP, requests a Let's Encrypt
-certificate, then switches to the full HTTPS config. It is safe to re-run: every
-step checks before it changes anything, so if the certificate step fails on DNS
-you can fix DNS and run the whole thing again.
-
-### Check it
-
-```bash
-curl -sSI https://rojafume.com | head -20
-```
-
-You want `HTTP/2 200` and a `strict-transport-security` header. Then open
-<https://rojafume.com> in a browser and confirm the padlock, the logo, and that
-the layout matches what you saw on localhost.
-
----
-
-## Step 4 — Automatic deploys on every push
-
-The site is live now, but updating it means SSHing in. This step makes
-`git push` publish it.
-
-### 4a. Make a key for GitHub to use
-
-**On the VPS:**
+On the VPS:
 
 ```bash
 ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/gh_deploy -N ""
@@ -205,157 +65,134 @@ cat ~/.ssh/gh_deploy
 echo "----- copy everything above, BEGIN and END lines included -----"
 
 echo "----- and this into VPS_SSH_KNOWN_HOSTS -----"
-ssh-keyscan -H "$(curl -s ifconfig.me)" 2>/dev/null
+ssh-keyscan -H 187.127.171.219 2>/dev/null
 ```
 
-Give GitHub a key of its own rather than reusing your personal one. Then you can
-revoke its access by deleting one line from `authorized_keys`, without locking
-yourself out.
+A key of its own, rather than your personal one, means GitHub's access can be
+revoked by deleting one line from `authorized_keys`.
 
-### 4b. Add the secrets
+### 2. Add the secrets
 
 GitHub → the repo → **Settings → Secrets and variables → Actions**.
 
-On the **Secrets** tab, **New repository secret**, four times:
+**Secrets** tab:
 
 | Secret | Value |
 | --- | --- |
 | `VPS_HOST` | `187.127.171.219` |
-| `VPS_USER` | `root` (or your deploy user) |
+| `VPS_USER` | `root` |
 | `VPS_SSH_KEY` | the private key printed above, in full |
-| `VPS_PATH` | `/var/www/rojafume` |
+| `VPS_PATH` | `/home/rojafumee/htdocs/rojafume.com` |
 
-Optional, both worth setting:
+Optional but worth setting:
 
 | Secret | Value |
 | --- | --- |
-| `VPS_SSH_KNOWN_HOSTS` | the `ssh-keyscan` output above — pins the server's identity so the deploy cannot be redirected to another machine |
-| `VPS_PORT` | only if your SSH port is not 22 |
+| `VPS_SSH_KNOWN_HOSTS` | the `ssh-keyscan` output — pins the server's identity |
+| `VPS_PORT` | only if SSH is not on 22 |
 
-Then on the **Variables** tab (next to Secrets), **New repository variable**:
+**Variables** tab:
 
 | Variable | Value |
 | --- | --- |
 | `SITE_URL` | `https://rojafume.com` |
 
-That one switches on the workflow's last step, which fetches the live page after
-deploying and fails the run if the site did not actually update. Without it the
-deploy still works, just unverified.
+That last one switches on the post-deploy check, which fetches the live page and
+fails the run if the site did not actually update.
 
-### Check it
+### 3. Test it
 
-GitHub → **Actions** → **Deploy to VPS** → **Run workflow**. It should finish
-green in about a minute, ending with `Live and verified: https://rojafume.com`.
+GitHub → **Actions** → **Deploy to VPS** → **Run workflow**. It should end with
+`Live and verified: https://rojafume.com`.
 
-From then on, editing `public/index.html` and pushing to `main` puts it live by
-itself. Editing `README.md` or `apps-script/Code.gs` does *not* trigger a deploy
-— they are not part of the site.
+The workflow reads the webroot's current owner before copying and restores it
+afterwards, so files stay owned by `rojafumee` and CloudPanel keeps working.
 
 ---
 
-## Step 5 — The one test that matters
-
-On the live site, submit a real signup with your own name, email and phone.
-
-Confirm all three:
-
-1. the page swaps to the confirmation panel
-2. a row appears in the `Signups` sheet
-3. the notification arrives at `rojaperfumes0405@gmail.com`
-
-**If the page says "we could not save your details":** that is the Apps Script
-backend, not the deploy — the page and the server are fine. `README.md` →
-*Troubleshooting* covers it. The short version is to fill in `SPREADSHEET_ID` at
-the top of `apps-script/Code.gs` and redeploy the web app with
-**Manage deployments → ✏ → Version: New version**.
-
-While you are in the sheet, delete the test rows — mine are named `DELETE ME …`
-or have `@example.com` addresses.
-
----
-
-## Changing the page later
+## Checks
 
 ```bash
-# edit public/index.html
-git add -A
-git commit -m "Copy change: ..."
-git push
-```
+# the page, the logo, and the redirects
+curl -sSI https://rojafume.com | head -5
+curl -sSI https://www.rojafume.com | head -5      # -> 301 to the apex
+curl -sSI http://rojafume.com | head -5           # -> 301 to https
 
-Live about forty seconds later. Watch it in the **Actions** tab.
-
-To roll back, revert and push — the workflow deploys whatever `main` points at:
-
-```bash
-git revert HEAD
-git push
+# the certificate
+echo | openssl s_client -connect rojafume.com:443 -servername rojafume.com 2>/dev/null \
+  | openssl x509 -noout -subject -issuer -dates
 ```
 
 ---
 
 ## Troubleshooting
 
-**`dig` prints the wrong IP, or nothing.** DNS has not propagated, or the record
-is wrong. Check the registrar panel again, and remember your own machine caches:
-`ipconfig /flushdns` on Windows. <https://dnschecker.org> shows what the rest of
-the world currently sees.
+**The page did not change after a deploy.** Check the Actions run first. If it
+was green, check CloudPanel's **Varnish Cache** tab for the site — if Varnish is
+on, it caches in front of nginx and will keep serving the old page.
 
-**certbot: "Timeout during connect" or "unauthorized".** Let's Encrypt could not
-reach `http://rojafume.com/.well-known/acme-challenge/…`. Either DNS is not
-pointing here yet, or port 80 is closed. Test all three:
+**The certificate did not renew.** Almost always something deleted
+`/home/rojafumee/htdocs/rojafume.com/.well-known/`. Re-issue from CloudPanel →
+**SSL/TLS → New Let's Encrypt Certificate**, and find whatever deleted it.
 
-```bash
-dig +short rojafume.com                       # must be this server's IP
-curl -sS http://rojafume.com/ | head -5       # must return the page over plain HTTP
-ufw status                                    # 80 and 443 must be allowed
-```
+**Let's Encrypt says `unauthorized` with `Invalid response … <!DOCTYPE html>`.**
+The challenge path is returning the page instead of the token. Something is
+applying a catch-all (`try_files … /index.html` or `/index.php`) to
+`/.well-known/`. The static-site template does not do this; a PHP or
+reverse-proxy template does.
 
-Also check your provider's own firewall. Oracle Cloud, AWS and Azure block
-80/443 in a security group *outside* the machine, so `ufw` looking fine is not
-enough.
+**`dig` shows the wrong IP.** Your resolver is caching. Ask an authoritative
+server directly: `nslookup rojafume.com ns25.domaincontrol.com`.
 
-**certbot: "too many failed authorizations".** Let's Encrypt rate-limits repeated
-failures for the same domain, for an hour. Fix DNS, verify with `dig`, *then*
-retry. Adding `--dry-run` to the certbot command tests without spending an
-attempt.
-
-**The site shows nginx's default "Welcome" page.** Another config is matching
-first. `setup-vps.sh` removes the packaged default, so this means a second config
-in `sites-enabled` also claims your domain:
+**Diagnosing nginx on this box.** `deploy/diagnose.sh` is read-only and prints
+which directories nginx actually loads config from, every `server_name` in the
+effective config, and what is listening on 80/443:
 
 ```bash
-ls -l /etc/nginx/sites-enabled/
-grep -rn server_name /etc/nginx/sites-enabled/
+sudo bash /opt/rojafume/deploy/diagnose.sh rojafume.com
 ```
-
-**The site works but the logo is a broken image.** `rojafume-logo.png` did not
-reach the webroot. `ls -l /var/www/rojafume/` should list both files; if only
-`index.html` is there, re-run `sudo bash deploy/deploy.sh`.
-
-**HTTPS works, HTTP hangs.** Port 80 is closed. Leave it open: certbot renews
-through it every 60 days, and anyone typing the bare domain arrives on 80 first.
-
-**A redirect loop.** You are behind Cloudflare with SSL mode "Flexible". Set it
-to **Full (strict)**.
-
-**The workflow fails at "Publish public/ to the webroot"** with
-`Permission denied (publickey)`. The `VPS_SSH_KEY` secret does not match the
-public key in `authorized_keys`. Re-copy it whole, including the
-`-----BEGIN OPENSSH PRIVATE KEY-----` and `-----END …-----` lines.
-
-**The workflow is green but the site did not change.** Something is caching in
-front of nginx, or your browser kept the HTML. The nginx config sends
-`must-revalidate` for `index.html`, so it is almost certainly Cloudflare — purge
-the cache there.
 
 ---
 
-## What gets deployed, and what does not
+## Lessons from setting this up
 
-Only `public/` is ever copied to the server. That is deliberate:
-`apps-script/Code.gs` and `design/rojafume.html` stay in the repo for reference
-and are never reachable over HTTP.
+Kept because they cost real time, and the next person will hit them.
+
+**On a panel-managed server, let the panel own nginx.** `deploy/setup-vps.sh`
+writes its own vhost and is the right tool on a *bare* server. Here it produced a
+second vhost claiming `rojafume.com`, which shadowed CloudPanel's, served from a
+different directory, and made the certificate impossible to issue — the ACME
+token was written to one root and read from another.
+`deploy/cloudpanel-publish.sh` exists to undo exactly that.
+
+**"No web server responding" is not the same as "no web server".** nginx answers
+unknown hostnames with `444` — connection closed, no reply — which from outside
+looks identical to nothing listening. That misread is why this box was treated as
+bare for the first two attempts.
+
+**A vhost nginx never parses still passes `nginx -t`.** CloudPanel includes
+`sites-enabled/*.conf`; Debian includes `sites-enabled/*`. A file without the
+extension is silently ignored, and the config test reports success because it
+never read the file.
+
+**`http2 on;` needs nginx 1.25.1.** Ubuntu 24.04 ships 1.24.0, where it is an
+unknown directive and `nginx -t` fails outright.
+
+**Pick the right site type.** The first CloudPanel attempt used the PHP template,
+which routes every unmatched URL to `/index.php` and proxies through port 8080.
+The static template serves files straight off disk, which is what a single HTML
+page needs — and what lets the ACME challenge work.
+
+**Verify, never assume.** Every failure here was a step that had reported
+success. The scripts now prove the challenge path serves a token *before* calling
+certbot — Let's Encrypt rate-limits failed validations to 5 per hostname per hour
+— and fetch the real page afterwards instead of printing "Done".
+
+---
+
+## What is deployed, and what is not
+
+Only `public/` ever reaches the server.
 
 | Path | Deployed? |
 | --- | --- |

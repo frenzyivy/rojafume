@@ -1,19 +1,27 @@
 # Publishes public/ to the VPS on every push to main.
 #
+# The server runs CloudPanel, which owns nginx and the certificate. This
+# workflow therefore only ever copies files into the site's webroot — it never
+# touches nginx config, and never restarts anything.
+#
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
 #
-#   VPS_HOST      the server's IP or hostname, e.g. 203.0.113.10
-#   VPS_USER      the SSH user, e.g. root or deploy
+#   VPS_HOST      the server's IP, 187.127.171.219
+#   VPS_USER      the SSH user, e.g. root
 #   VPS_SSH_KEY   the PRIVATE half of a key whose public half is in that
 #                 user's ~/.ssh/authorized_keys — paste the whole file,
 #                 including the BEGIN and END lines
-#   VPS_PATH      the webroot, e.g. /var/www/rojafume
+#   VPS_PATH      the webroot. On this server (CloudPanel) that is
+#                 /home/rojafumee/htdocs/rojafume.com
 #
 # Optional:
 #   VPS_PORT             SSH port, if not 22
-#   VPS_SSH_KNOWN_HOSTS  output of `ssh-keyscan your.server`. Set this to pin
-#                        the host key; without it the run trusts whatever key
-#                        the server presents on first contact.
+#   VPS_SSH_KNOWN_HOSTS  output of `ssh-keyscan 187.127.171.219`. Set this to
+#                        pin the host key; without it the run trusts whatever
+#                        key the server presents on first contact.
+#
+# Required repository variable:
+#   SITE_URL      https://rojafume.com — switches on the post-deploy check
 #
 # Step-by-step setup is in DEPLOY.md.
 
@@ -26,7 +34,6 @@ on:
     # Editing README.md or apps-script/Code.gs does not trigger a deploy.
     paths:
       - 'public/**'
-      - 'deploy/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:        # lets you deploy by hand from the Actions tab
 
@@ -76,7 +83,7 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Publish public/ to the webroot
+      - name: Remember who owns the webroot
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
@@ -84,26 +91,47 @@ jobs:
           VPS_PORT: ${{ secrets.VPS_PORT }}
         run: |
           test -n "$VPS_PATH" || { echo "::error::the VPS_PATH secret is not set"; exit 1; }
-          # Trailing slash on the source: copy the CONTENTS of public/, not the
-          # directory itself. --delete removes files dropped from the repo.
-          rsync -av --delete --itemize-changes \
-            -e "ssh -i ~/.ssh/id_deploy -p ${VPS_PORT:-22} -o StrictHostKeyChecking=yes" \
-            public/ "$VPS_USER@$VPS_HOST:$VPS_PATH/"
+          # On a panel-managed server the webroot belongs to the site's own user
+          # (CloudPanel: /home/<siteuser>/htdocs/<domain>), not www-data. Read the
+          # current owner rather than guessing, and restore it after rsync.
+          OWNER=$(ssh -i ~/.ssh/id_deploy -p "${VPS_PORT:-22}" -o StrictHostKeyChecking=yes \
+                  "$VPS_USER@$VPS_HOST" "stat -c '%U:%G' '$VPS_PATH'")
+          test -n "$OWNER" || { echo "::error::could not read $VPS_PATH — does it exist?"; exit 1; }
+          echo "webroot owner: $OWNER"
+          echo "OWNER=$OWNER" >> "$GITHUB_ENV"
 
-      - name: Fix ownership so nginx can read the files
+      - name: Publish public/ to the webroot
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PATH: ${{ secrets.VPS_PATH }}
           VPS_PORT: ${{ secrets.VPS_PORT }}
         run: |
-          # rsync leaves the files owned by the SSH user. nginx runs as
-          # www-data, so it needs the group and the read bits. `|| true`
-          # because a non-root deploy user cannot chown, and does not need to
-          # when the webroot group is already right.
+          # Trailing slash on the source: copy the CONTENTS of public/, not the
+          # directory itself. --delete removes files dropped from the repo.
+          #
+          # --exclude '.well-known' is NOT optional. Let's Encrypt writes its
+          # renewal challenge tokens into that directory; deleting it on every
+          # deploy would silently break renewal and the certificate would expire
+          # about 90 days later, with no warning until the site goes insecure.
+          rsync -av --delete --itemize-changes --exclude '.well-known' \
+            -e "ssh -i ~/.ssh/id_deploy -p ${VPS_PORT:-22} -o StrictHostKeyChecking=yes" \
+            public/ "$VPS_USER@$VPS_HOST:$VPS_PATH/"
+
+      - name: Restore ownership and permissions
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          # rsync leaves the new files owned by the SSH user. Hand them back to
+          # whoever owned the webroot before this run, so the panel and PHP-FPM
+          # keep working. `|| true` because a non-root deploy user cannot chown
+          # and does not need to.
           ssh -i ~/.ssh/id_deploy -p "${VPS_PORT:-22}" \
               -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
-            "chgrp -R www-data '$VPS_PATH' 2>/dev/null || true; \
+            "chown -R '$OWNER' '$VPS_PATH' 2>/dev/null || true; \
              find '$VPS_PATH' -type d -exec chmod 755 {} + ; \
              find '$VPS_PATH' -type f -exec chmod 644 {} + "
 
@@ -111,21 +139,26 @@ jobs:
         env:
           SITE_URL: ${{ vars.SITE_URL }}
         run: |
-          # Set a repository variable SITE_URL (e.g. https://rojafume.com) to
-          # turn this check on. Without it the deploy still succeeds, unverified.
+          # Set a repository variable SITE_URL (https://rojafume.com) to turn
+          # this check on. Without it the deploy still succeeds, unverified.
           if [ -z "$SITE_URL" ]; then
             echo "::warning::Set a SITE_URL repository variable to verify deploys."
             exit 0
           fi
           fail=0
           for path in "/" "/rojafume-logo.png"; do
-            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$SITE_URL$path" || echo 000)
+            code=$(curl -sS -o /dev/null -L --max-time 20 -w '%{http_code}' "$SITE_URL$path" || echo 000)
             echo "$SITE_URL$path -> $code"
             [ "$code" = "200" ] || fail=1
           done
           # The deployed HTML must be the HTML we just pushed.
-          if ! curl -sS --max-time 20 "$SITE_URL/" | grep -q "RojaFume"; then
+          if ! curl -sS -L --max-time 20 "$SITE_URL/" | grep -q "RojaFume Fragrances"; then
             echo "::error::the live page did not contain the expected content"
+            fail=1
+          fi
+          # And it must still be the real certificate, not a panel placeholder.
+          if ! curl -sS -o /dev/null --max-time 20 "$SITE_URL/"; then
+            echo "::error::TLS verification failed for $SITE_URL"
             fail=1
           fi
           [ "$fail" = "0" ] || { echo "::error::the live site did not verify"; exit 1; }
