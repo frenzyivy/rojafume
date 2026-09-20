@@ -19,7 +19,7 @@ var SHEET_NAME = 'Signups';
 // Filling this in is the most reliable option: it removes all dependence on
 // getActiveSpreadsheet(), on setup() having run, and on deployment ordering.
 // Leave blank only if you want it resolved automatically (see getSpreadsheet).
-var SPREADSHEET_ID = '';
+var SPREADSHEET_ID = '1YtlGOg_gOpAoF4hSqM6LKZgkbZ3ApVrztT6htSCqX8A';
 
 // Diagnostics switch. When a Script Property named DEBUG_TOKEN is set, a request
 // carrying that exact value in its "debug" field gets the real error back instead
